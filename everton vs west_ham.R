@@ -1,50 +1,54 @@
 library(nleqslv)
 library(skellam)
-library(knitr)
 library(ggplot2)
 
-#####   Data  #####
-data<-read.csv("everton.csv")
-data<-data[,c(2:7,9:13)]
-data[is.na(data)]<-Inf
-data[,-1]<-1/(1+data[,-1])
-data[,-1]<-apply(data[,-1],2,function (x) x/sum(x))
+#####   Data Processing #####
+data = read.csv("everton.csv")
+data = data[,c(2:7,9:13)]
+data[is.na(data)] = Inf
 
-goalx<-c(13,56)/90 #everton
-goaly<-c(78,81,89)/90 #west ham
-theta_MM_1=rep(0,10)
-theta_MM_2=rep(0,10)
+# convert odds to prob.
+data[,-1] = 1/(1+data[,-1])
+# scale down (sum to 1)
+data[,-1] = apply(data[,-1],2,function (x) x/sum(x))
 
-
-
+# goals of two teams
+goalx = c(13,56)/90 #everton
+goaly = c(78,81,89)/90 #west ham
 
 #####   Estimation  #####
-m<-dim(data)[1]
-N<-10000
+
+theta_MM_1 = rep(0,10)
+theta_MM_2 = rep(0,10)
+
+m = dim(data)[1]
+N = 10000
 for (i in 1:10)
 {
-  Z<-rep(data[,1],round(N*data[,i+1]))
+  Z = rep(data[,1],round(N*data[,i+1]))
   
-  #calibrate odds
-  if (2<i&i<8) Z=Z-1
-  if (i>7&i<10) Z=Z-2
+  # calibrate odds
+  if (2<i&i<8) Z = Z-1
+  if (i>7&i<10) Z = Z-2
   
-  target=function(theta,V=var(Z),E=mean(Z))
+  # construct object function
+  target = function(theta,V=var(Z),E=mean(Z))
   {
-    result=(V-theta[1]-theta[2])^2+(E-theta[1]+theta[2])^2 +(max(-theta[1],0)^2+max(-theta[2],0)^2)*100000
+    result = (V-theta[1]-theta[2])^2+(E-theta[1]+theta[2])^2 +(max(-theta[1],0)^2+max(-theta[2],0)^2)*100000
     return(result)
   }
-  output=optim(c(1,1),target)
-  theta_MM_1[i]=output$par[1]
-  theta_MM_2[i]=output$par[2]
+  output = optim(c(1,1),target)
+  theta_MM_1[i] = output$par[1]
+  theta_MM_2[i] = output$par[2]
 }
+
 #theta_MM_1 = c(theta_MM_1,0)
 #theta_MM_2 = c(theta_MM_2,0)
+
 t = c(0,10,20,30,40,45,55,65,75,85,90)/90
 IV = sqrt(theta_MM_1+theta_MM_2)
-everton = cbind(t,theta_MM_1,theta_MM_2,IV)
-everton = t(everton)
-
+# everton = cbind(t,theta_MM_1,theta_MM_2,IV)
+# everton = t(everton)
 
 #####   Comparison   ##### 
 
@@ -94,18 +98,20 @@ a
 dev.off()
 
 #####   Probability   ##### 
-n<-90000
+n = 90000
 #x<-c(0,10,20,30,40,45,55,65,75,85,90)
 #y1<-c(theta_MM_1,0)
 #y2<-c(theta_MM_2,0)
-x<-c(0,10,20,30,34,40,45,55,65,75,85,90)
-y1<-c(theta_MM_1[1:4],theta_MM_1[4],theta_MM_1[5:10],0)
-y2<-c(theta_MM_2[1:4],theta_MM_2[4],theta_MM_2[5:10],0)
-theta_x<-spline(x,y1,n)$y
-theta_y<-spline(x,y2,n)$y
-t<-seq(0,1,length.out=n)
-x<-rep(0,n)
-y<-rep(0,n)
+
+# smooth
+x = c(0,10,20,30,34,40,45,55,65,75,85,90)
+y1 = c(theta_MM_1[1:4],theta_MM_1[4],theta_MM_1[5:10],0)
+y2 = c(theta_MM_2[1:4],theta_MM_2[4],theta_MM_2[5:10],0)
+theta_x = spline(x,y1,n)$y
+theta_y = spline(x,y2,n)$y
+t = seq(0,1,length.out=n)
+x = rep(0,n)
+y = rep(0,n)
 if(length(goalx)>0)
   for(i in 1:length(goalx))
     x<-x+c(rep(0,floor(goalx[i]*n)),rep(1,n-floor(goalx[i]*n)))
@@ -113,11 +119,12 @@ if(length(goaly)>0)
   for(i in 1:length(goaly))
     y<-y+c(rep(0,floor(goaly[i]*n)),rep(1,n-floor(goaly[i]*n)))
 
-p_win<-pskellam(y-x,lambda1 = theta_x,lambda2 = theta_y,lower.tail = FALSE)*100
-p_draw<-dskellam(y-x,lambda1 = theta_x,lambda2 = theta_y)*100
-p_lose<-100-p_win-p_draw
+# prob.s and iv.
+p_win = pskellam(y-x,lambda1 = theta_x,lambda2 = theta_y,lower.tail = FALSE)*100
+p_draw = dskellam(y-x,lambda1 = theta_x,lambda2 = theta_y)*100
+p_lose = 100-p_win-p_draw
 
-iv<-sqrt(theta_x+theta_y)
+iv = sqrt(theta_x+theta_y)
 
 #####   Probability Plot   ##### 
 pdf(file = "Everton vs West Ham.pdf",width = 10,height = 7)
@@ -171,11 +178,6 @@ kable(estimate,"latex",align = 'c')
 prob = dskellam(-5:5,lambda1 = everton[1,1],lambda2 = everton[1,2])
 
 
-
-
-
-
-
 histo_full<-rep(0,11)  # full
 for (i in 1:11) 
   histo_full[i]=dskellam(i-6,lambda1 = everton[1,1],lambda2 = everton[1,2])
@@ -210,6 +212,7 @@ barplot(beside=TRUE,
 text(2.5,28,"West Ham Wins = 15.74%")
 text(10.5,28,"Everton Wins = 61.08%")
 text(6.5,32,"Draw = 23.18%")
+
 ##### simulation #####
 
 ## Full time
